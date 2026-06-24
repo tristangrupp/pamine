@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>Pennsylvania AML — Downstream Exposure</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+<style>
+  :root{
+    --bg:#eef0f3; --panel:#ffffff; --line:rgba(15,20,30,.09);
+    --txt:#1b1f25; --muted:#7c828c; --accent:#ef7a2f;
+    --green:[63,174,107]; --red:#d6342c; --ohio:#e8961e;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;height:100%;background:var(--bg);color:var(--txt);
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Helvetica,Arial,sans-serif;
+    -webkit-font-smoothing:antialiased}
+  #map{position:absolute;inset:0;background:var(--bg)}
+  .leaflet-container{background:#eef0f3;font:inherit}
+  .leaflet-control-zoom{display:none}
+
+  /* shared panel look — flat, hairline, minimal */
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    box-shadow:0 2px 14px rgba(20,30,50,.06)}
+  .lbl{font-size:9.5px;text-transform:uppercase;letter-spacing:1.3px;color:var(--muted);
+    margin-bottom:6px;font-weight:600}
+
+  /* LEFT panel : brand + hover readout + ranking list */
+  #side{position:absolute;top:18px;left:18px;bottom:18px;width:300px;z-index:1000;
+    display:flex;flex-direction:column;gap:12px}
+  .brand h1{margin:0;font-size:17px;font-weight:650;letter-spacing:.2px}
+  .brand .sub{margin:5px 0 0;font-size:11.5px;color:var(--muted);line-height:1.5}
+  #side .card{padding:14px 15px}
+  .hover .hName{font-size:12.5px;font-weight:650;margin-bottom:7px;line-height:1.25}
+  .hRow{display:flex;justify-content:space-between;gap:12px;font-size:11.5px;padding:2px 0}
+  .hRow span{color:var(--muted)} .hRow b{font-variant-numeric:tabular-nums}
+  .ranksHead{display:flex;align-items:baseline;justify-content:space-between;margin:2px 2px 0}
+  .ranksHead .ttl{font-size:12px;font-weight:650}
+  .rsub{font-size:10px;color:var(--muted);text-align:right;max-width:160px}
+  #ranks{flex:1;overflow-y:auto;padding-right:2px;display:flex;flex-direction:column;gap:3px}
+  .rItem{display:grid;grid-template-columns:16px 9px 1fr auto;align-items:center;gap:8px;
+    padding:7px 9px;border-radius:9px;background:var(--panel);border:1px solid var(--line);
+    cursor:pointer;transition:.12s}
+  .rItem:hover{background:#f5f6f8;transform:translateX(1px)}
+  .rNum{font-size:10.5px;color:var(--muted);font-variant-numeric:tabular-nums;text-align:right}
+  .rChip{width:9px;height:9px;border-radius:2px}
+  .rName{font-size:11.5px;font-weight:550;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .rRight{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .rRight .v{font-size:11.5px;font-weight:650}
+  .rRight .s{font-size:9px;color:var(--muted)}
+  .rRight .i{font-size:10px;color:var(--muted);display:block;margin-top:1px}
+  .rEmpty{font-size:11.5px;color:var(--muted);padding:14px 4px;text-align:center}
+  #ranks::-webkit-scrollbar{width:6px}
+  #ranks::-webkit-scrollbar-thumb{background:rgba(0,0,0,.12);border-radius:3px}
+
+  /* RIGHT controls */
+  #panel{position:absolute;top:18px;right:18px;z-index:1000;width:240px;padding:15px}
+  .grp{margin-bottom:13px}.grp:last-child{margin-bottom:0}
+  .seg{display:flex;background:#f1f2f5;border-radius:9px;padding:3px;gap:3px}
+  .seg button{flex:1;border:0;background:transparent;color:var(--muted);font-size:11.5px;
+    font-weight:550;padding:7px 0;border-radius:7px;cursor:pointer;transition:.12s}
+  .seg button.on{background:#fff;color:var(--txt);box-shadow:0 1px 4px rgba(20,30,50,.12)}
+  select{width:100%;background:#f1f2f5;color:var(--txt);border:1px solid var(--line);
+    border-radius:9px;padding:9px 10px;font-size:12.5px;outline:none;cursor:pointer;appearance:none;
+    background-image:url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' stroke='%237c828c' stroke-width='2'><path d='M2 4l4 4 4-4'/></svg>");
+    background-repeat:no-repeat;background-position:right 11px center}
+  .togs{display:flex;flex-direction:column;gap:1px}
+  .tog{display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--txt);
+    padding:4px 3px;border-radius:6px;cursor:pointer;user-select:none}
+  .tog:hover{background:#f5f6f8}
+  .tog input{appearance:none;width:14px;height:14px;border:1.5px solid #c2c6cd;border-radius:4px;
+    cursor:pointer;position:relative;flex:none;transition:.12s}
+  .tog input:checked{background:var(--accent);border-color:var(--accent)}
+  .tog input:checked::after{content:"";position:absolute;left:4px;top:1px;width:3.5px;height:7px;
+    border:solid #fff;border-width:0 2px 2px 0;transform:rotate(45deg)}
+  .sw{width:10px;height:10px;border-radius:3px;flex:none}
+
+  /* legend */
+  #legend{position:absolute;bottom:18px;right:18px;z-index:1000;padding:13px 14px;width:200px}
+  #legend .lbl{margin-bottom:8px}
+  .biv{display:grid;grid-template-columns:14px 1fr 14px;grid-template-rows:auto 84px auto;gap:5px;align-items:center}
+  #bivcanvas{grid-column:2;grid-row:2;width:100%;height:84px;border-radius:5px;border:1px solid var(--line)}
+  .axL{grid-column:1;grid-row:2;writing-mode:vertical-rl;transform:rotate(180deg);font-size:9px;color:var(--muted);text-align:center}
+  .axB{grid-column:2;grid-row:3;font-size:9px;color:var(--muted);text-align:center}
+  .cap{grid-column:2;grid-row:1;font-size:9px;color:var(--muted);text-align:center}
+  .seqbar{height:10px;border-radius:5px;border:1px solid var(--line);
+    background:linear-gradient(90deg,#e7eaef,#fed976,#feb24c,#fd8d3c,#fc4e2a,#e31a1c,#b10026)}
+  .seqlbl{display:flex;justify-content:space-between;font-size:9px;color:var(--muted);margin-top:5px}
+
+  #note{position:absolute;left:calc(50% + 140px);top:50%;transform:translate(-50%,-50%);z-index:1100;
+    background:#fff;border:1px solid var(--line);border-radius:10px;padding:13px 16px;font-size:12px;
+    color:var(--muted);max-width:320px;text-align:center;display:none;line-height:1.5;box-shadow:0 2px 14px rgba(20,30,50,.08)}
+  a.credit{position:absolute;bottom:3px;left:326px;z-index:900;font-size:9px;color:rgba(20,30,50,.3);text-decoration:none}
+</style>
+</head>
+<body>
+<div id="map"></div>
+
+<!-- LEFT : brand + hover readout + ranking -->
+<div id="side">
+  <div class="brand">
+    <h1>Pennsylvania Abandoned Mine Land</h1>
+    <div class="sub">Downstream exposure of communities to unreclaimed, health- &amp; safety-priority AML sites along SRTM-derived river networks.</div>
+  </div>
+  <div class="hover card">
+    <div class="hName" id="hName">Hover a community</div>
+    <div class="hRow"><span>Upstream sites</span><b id="hExp">—</b></div>
+    <div class="hRow" id="hIndRow" style="display:none"><span id="hIndLbl">Indicator</span><b id="hInd">—</b></div>
+  </div>
+  <div class="ranksHead"><span class="ttl">Most affected</span><span class="rsub" id="ranksSub"></span></div>
+  <div id="ranks" class="card" style="padding:7px"></div>
+</div>
+
+<!-- RIGHT : controls -->
+<div id="panel" class="card">
+  <div class="grp">
+    <div class="lbl">Geography</div>
+    <div class="seg" id="geoSeg">
+      <button data-geo="block" class="on">Blocks</button>
+      <button data-geo="cbg">Block grp</button>
+      <button data-geo="zcta">ZIP</button>
+    </div>
+  </div>
+  <div class="grp">
+    <div class="lbl">Upstream extent</div>
+    <div class="seg" id="extSeg">
+      <button data-ext="exposure" class="on">Whole basin</button>
+      <button data-ext="exposure_25k">&le; 25 km</button>
+    </div>
+  </div>
+  <div class="grp">
+    <div class="lbl">Dimension</div>
+    <select id="dim">
+      <option value="exposure">Exposure (upstream sites)</option>
+      <option value="income">Exposure × Income (low)</option>
+      <option value="vyoung">Exposure × Very young (&lt;5)</option>
+      <option value="minority">Exposure × Minority pop.</option>
+      <option value="health">Exposure × Health burden</option>
+    </select>
+  </div>
+  <div class="grp">
+    <div class="lbl">Layers</div>
+    <div class="togs">
+      <label class="tog"><input type="checkbox" id="t_choro" checked><span>Census exposure</span></label>
+      <label class="tog"><input type="checkbox" id="t_basins" checked><span class="sw" style="background:var(--ohio)"></span><span>River basins</span></label>
+      <label class="tog"><input type="checkbox" id="t_rivers" checked><span class="sw" style="background:#5b8fb0"></span><span>Rivers</span></label>
+      <label class="tog"><input type="checkbox" id="t_polys"><span class="sw" style="background:#cdd1d7;border:1px solid #6f757e"></span><span>AML polygons</span></label>
+      <label class="tog"><input type="checkbox" id="t_sites"><span class="sw" style="background:#6b7077"></span><span>AML sites</span></label>
+      <label class="tog"><input type="checkbox" id="t_points"><span class="sw" style="background:#cf5b48"></span><span>AML points (all)</span></label>
+      <label class="tog"><input type="checkbox" id="t_qual" checked><span class="sw" style="background:#9aa0a8"></span><span>Health/safety sites</span></label>
+    </div>
+  </div>
+</div>
+
+<div id="legend" class="card">
+  <div class="lbl" id="legTitle">Exposure</div>
+  <div id="bivBox" class="biv" style="display:none">
+    <div class="cap">more exposed →</div>
+    <div class="axL" id="axL">indicator →</div>
+    <canvas id="bivcanvas" width="120" height="84"></canvas>
+    <div class="axB">low → high exposure</div>
+  </div>
+  <div id="seqBox">
+    <div class="seqbar"></div>
+    <div class="seqlbl"><span>low</span><span id="seqMax">max</span></div>
+  </div>
+</div>
+
+<div id="note"></div>
+<a class="credit" href="https://carto.com/attributions" target="_blank">© OpenStreetMap © CARTO</a>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="map_data/basins.js" onerror="window._noBasins=1"></script>
+<script src="map_data/rivers.js" onerror="window._noRivers=1"></script>
+<script src="map_data/aml_sites.js" onerror="window._noSites=1"></script>
+<script src="map_data/aml_polys.js" onerror="window._noPolys=1"></script>
+<script src="map_data/aml_points.js" onerror="window._noPoints=1"></script>
+<script src="map_data/cbg_exposure.js" onerror="window._noCBG=1"></script>
+<script src="map_data/zcta_exposure.js" onerror="window._noZCTA=1"></script>
+<script src="map_data/block_exposure.js" onerror="window._noBLK=1"></script>
+
+<script>
+"use strict";
+/* ---------- palette ---------- */
+const COL={green:[63,174,107],blue:[63,127,214],orange:[239,138,54],red:[214,52,44]};
+function bivColor(ex,iv){
+  const g=COL.green,b=COL.blue,o=COL.orange,r=COL.red;
+  const w00=(1-ex)*(1-iv),w01=(1-ex)*iv,w10=ex*(1-iv),w11=ex*iv;
+  const c=i=>Math.round(g[i]*w00+b[i]*w01+o[i]*w10+r[i]*w11);
+  return `rgb(${c(0)},${c(1)},${c(2)})`;
+}
+// light-theme sequential ramp: faint grey at ~0, then YlOrRd
+const SEQ_STOPS=[
+  [0.00,[231,234,239]],[0.15,[254,217,118]],[0.35,[254,178,76]],
+  [0.55,[253,141,60]], [0.75,[252,78,42]],  [0.90,[227,26,28]],[1.00,[177,0,38]]
+];
+function rampColor(t,stops){
+  t=Math.max(0,Math.min(1,t));
+  for(let i=1;i<stops.length;i++){
+    if(t<=stops[i][0]){
+      const t0=stops[i-1][0],c0=stops[i-1][1],t1=stops[i][0],c1=stops[i][1];
+      const f=(t-t0)/((t1-t0)||1),c=j=>Math.round(c0[j]+(c1[j]-c0[j])*f);
+      return `rgb(${c(0)},${c(1)},${c(2)})`;
+    }
+  }
+  const l=stops[stops.length-1][1];return `rgb(${l[0]},${l[1]},${l[2]})`;
+}
+function seqColor(ex){return rampColor(ex,SEQ_STOPS);}
+function classLabel(ex,iv){
+  const hx=ex>=0.5,hi=iv>=0.5;
+  if(hx&&hi)return"High exposure · High indicator";
+  if(hx&&!hi)return"High exposure · Low indicator";
+  if(!hx&&hi)return"Low exposure · High indicator";
+  return"Low exposure · Low indicator";
+}
+
+/* ---------- map ---------- */
+const map=L.map('map',{preferCanvas:true,zoomControl:false,attributionControl:false,minZoom:6,maxZoom:14})
+  .setView([40.95,-77.6],7);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png',{
+  subdomains:'abcd',maxZoom:19,opacity:0.85}).addTo(map);
+
+const paneOrder=['basins','choro','rivers','sites','polys','points','qual'];
+paneOrder.forEach((p,i)=>{
+  map.createPane(p);
+  const pe=map.getPane(p);
+  pe.style.zIndex=400+i*10;
+  // only the census pane captures the mouse, so hover works through the AML layers on top
+  pe.style.pointerEvents=(p==='choro')?'auto':'none';
+});
+
+/* ---------- spatial layers ---------- */
+let lBasins,lRivers,lSites,lPolys,lPoints,lQual;
+
+if(typeof BASINS!=='undefined'){
+  lBasins=L.geoJSON(BASINS,{pane:'basins',style:f=>({
+    color:f.properties.ohio?'#e8961e':'rgba(40,50,65,.30)',
+    weight:f.properties.ohio?1.8:0.7,
+    fillColor:f.properties.ohio?'#e8961e':'#9aa3b0',
+    fillOpacity:f.properties.ohio?0.14:0.04})}).addTo(map);
+  // auto-center on the Ohio basin
+  const oh={type:'FeatureCollection',features:BASINS.features.filter(f=>f.properties.ohio)};
+  try{
+    if(oh.features.length) map.fitBounds(L.geoJSON(oh).getBounds(),{padding:[50,50]});
+    else map.fitBounds(lBasins.getBounds(),{padding:[40,40]});
+  }catch(e){}
+}
+if(typeof RIVERS!=='undefined'){
+  lRivers=L.geoJSON(RIVERS,{pane:'rivers',interactive:false,
+    style:{color:'#5b95c4',weight:0.4,opacity:0.5}}).addTo(map);
+}
+function polyCentroid(g){
+  let c; if(g.type==='Polygon')c=g.coordinates[0];
+  else if(g.type==='MultiPolygon')c=g.coordinates[0][0]; else return null;
+  let x=0,y=0,n=0; for(const p of c){x+=p[0];y+=p[1];n++;} return n?[x/n,y/n]:null;
+}
+if(typeof AMLSITES!=='undefined'){
+  const sd={type:'FeatureCollection',features:AMLSITES.features.map(f=>{
+    const ctr=polyCentroid(f.geometry);
+    return ctr?{type:'Feature',properties:f.properties,geometry:{type:'Point',coordinates:ctr}}:null;
+  }).filter(Boolean)};
+  // AML sites = grey dots, slightly smaller than the black health/safety points
+  lSites=L.geoJSON(sd,{pane:'sites',interactive:false,pointToLayer:(f,ll)=>L.circleMarker(ll,{
+    radius:1.4,color:'#6b7077',weight:0,fillColor:'#6b7077',fillOpacity:0.85})});
+}
+if(typeof AMLPOLYS!=='undefined'){
+  lPolys=L.geoJSON(AMLPOLYS,{pane:'polys',interactive:false,
+    style:{color:'#6f757e',weight:0.5,fillColor:'#cdd1d7',fillOpacity:0.2}});
+}
+if(typeof AMLPOINTS!=='undefined'){
+  lPoints=L.geoJSON(AMLPOINTS,{pane:'points',interactive:false,pointToLayer:(f,ll)=>L.circleMarker(ll,{
+    radius:1.7,color:'#c0533f',weight:0,fillColor:'#c0533f',fillOpacity:0.6})});
+  // health/safety sites = black dots, on top
+  const q={type:'FeatureCollection',features:AMLPOINTS.features.filter(f=>f.properties.qual)};
+  lQual=L.geoJSON(q,{pane:'qual',interactive:false,pointToLayer:(f,ll)=>L.circleMarker(ll,{
+    radius:1.4,color:'#9aa0a8',weight:0,fillColor:'#9aa0a8',fillOpacity:0.8})}).addTo(map);
+}
+
+/* ---------- choropleth ---------- */
+const DIMS={
+  exposure:{lbl:'Exposure',ind:null},
+  income:  {lbl:'Low income',ind:'income',invert:true,fmt:v=>'$'+Math.round(v).toLocaleString()},
+  vyoung:  {lbl:'Very young <5',ind:'vyoung',fmt:v=>(v).toFixed(1)+'%'},
+  minority:{lbl:'Minority pop.',ind:'minority',fmt:v=>(v).toFixed(1)+'%'},
+  health:  {lbl:'Health burden',ind:'health',fmt:v=>(v).toFixed(1)+'%'}
+};
+let geo='block', dim='exposure', expField='exposure', choroLayer=null;
+const DATA={block:(typeof BLOCK_EXPOSURE!=='undefined')?BLOCK_EXPOSURE:null,
+            cbg:(typeof CBG_EXPOSURE!=='undefined')?CBG_EXPOSURE:null,
+            zcta:(typeof ZCTA_EXPOSURE!=='undefined')?ZCTA_EXPOSURE:null};
+const DIM_AVAIL={
+  block:['exposure','vyoung','minority'],
+  cbg:['exposure','income','vyoung','minority','health'],
+  zcta:['exposure','income','vyoung','minority','health']
+};
+const GEO_LBL={block:'blocks',cbg:'block groups',zcta:'ZIP codes'};
+
+function buildRanks(fc,field){
+  const vals=fc.features.map(f=>+f.properties[field]).filter(v=>!isNaN(v)).sort((a,b)=>a-b);
+  return v=>{ if(isNaN(v)||vals.length===0)return 0;
+    let lo=0,hi=vals.length; while(lo<hi){const m=(lo+hi)>>1; if(vals[m]<v)lo=m+1;else hi=m;}
+    return vals.length>1?lo/(vals.length-1):0; };
+}
+// exposure ranked ONLY among exposed (>0), mapped to [0.15,1]; 0 -> 0
+function buildExpRank(fc,field){
+  const vals=fc.features.map(f=>+f.properties[field]).filter(v=>v>0).sort((a,b)=>a-b);
+  return v=>{ v=+v; if(!(v>0)||vals.length===0)return 0;
+    let lo=0,hi=vals.length; while(lo<hi){const m=(lo+hi)>>1; if(vals[m]<v)lo=m+1;else hi=m;}
+    const p=vals.length>1?lo/(vals.length-1):1;
+    return 0.15+0.85*p; };
+}
+let expRank=null, indRank=null;
+
+function styleFeat(f){
+  const ex=expRank?expRank(+f.properties[expField]):0;
+  const d=DIMS[dim];
+  if(!d.ind) return {color:'rgba(20,30,45,.10)',weight:0.3,fillColor:seqColor(ex),fillOpacity:ex>0?0.82:0.06};
+  let iv=indRank?indRank(+f.properties[d.ind]):0;
+  if(d.invert)iv=1-iv;
+  // fade low-exposure areas (greens/blues) to ~75% transparent so high-exposure pops
+  const op=ex>=0.5?0.85:0.25;
+  return {color:'rgba(20,30,45,.08)',weight:0.3,fillColor:bivColor(ex,iv),fillOpacity:op};
+}
+
+function renderChoro(){
+  if(choroLayer){map.removeLayer(choroLayer);choroLayer=null;}
+  const fc=DATA[geo];
+  document.getElementById('note').style.display='none';
+  if(!fc){
+    const n=document.getElementById('note');n.style.display='block';
+    n.innerHTML=`Census <b>${GEO_LBL[geo]}</b> exposure not generated yet.<br>`+
+      `Run <b>PA_Mining_Pipeline/run_all.py</b> to populate this layer.`;
+    expRank=null;indRank=null;return;
+  }
+  expRank=buildExpRank(fc,expField);
+  const d=DIMS[dim];
+  indRank=d.ind?buildRanks(fc,d.ind):null;
+  choroLayer=L.geoJSON(fc,{pane:'choro',style:styleFeat,
+    onEachFeature:(f,lyr)=>{
+      lyr.on('mousemove',()=>showInfo(f));
+      lyr.on('mouseover',function(){this.setStyle({weight:1.3,color:'#222'});});
+      lyr.on('mouseout',function(){this.setStyle({weight:0.3,color:'rgba(20,30,45,.10)'});});
+    }}).addTo(map);
+  choroLayer.bringToFront();
+  if(lPoints&&document.getElementById('t_points').checked)lPoints.bringToFront();
+  if(lQual&&document.getElementById('t_qual').checked)lQual.bringToFront();
+}
+
+/* ---------- hover readout (in left panel) ---------- */
+function showInfo(f){
+  const p=f.properties,d=DIMS[dim];
+  const glab={block:'Block',cbg:'Block group',zcta:'ZIP'}[geo];
+  document.getElementById('hName').textContent=(p.name||p.GEOID||glab)+' · '+glab;
+  const extlab=expField==='exposure_25k'?' (≤25 km)':'';
+  document.getElementById('hExp').textContent=(+p[expField]||0)+' sites'+extlab;
+  const row=document.getElementById('hIndRow');
+  if(d.ind&&p[d.ind]!=null&&!isNaN(+p[d.ind])){
+    row.style.display='flex';
+    document.getElementById('hIndLbl').textContent=d.lbl;
+    document.getElementById('hInd').textContent=d.fmt?d.fmt(+p[d.ind]):(+p[d.ind]).toFixed(1);
+  }else row.style.display='none';
+}
+
+/* ---------- ranking list ---------- */
+function renderRanks(){
+  const fc=DATA[geo],box=document.getElementById('ranks'),d=DIMS[dim];
+  document.getElementById('ranksSub').textContent=
+    GEO_LBL[geo]+' · '+(d.ind?d.lbl:'exposure')+(expField==='exposure_25k'?' · ≤25km':'');
+  if(!fc){box.innerHTML='<div class="rEmpty">Run the pipeline to populate.</div>';return;}
+  const er=buildExpRank(fc,expField),ir=d.ind?buildRanks(fc,d.ind):null;
+  const rows=[];
+  fc.features.forEach((f,idx)=>{
+    const ex=+f.properties[expField]||0; if(ex<=0)return;
+    const exr=er(ex);
+    let iv=null,ivr=0,score=exr;
+    if(d.ind){iv=+f.properties[d.ind]; ivr=ir(iv); if(d.invert)ivr=1-ivr; score=exr*ivr;}
+    rows.push({idx,f,ex,exr,iv,ivr,score});
+  });
+  rows.sort((a,b)=>b.score-a.score||b.ex-a.ex);
+  const top=rows.slice(0,14);
+  if(!top.length){box.innerHTML='<div class="rEmpty">No exposed areas.</div>';return;}
+  box.innerHTML=top.map((r,i)=>{
+    const col=d.ind?bivColor(r.exr,r.ivr):seqColor(r.exr);
+    const ind=d.ind?`<span class="i">${d.fmt?d.fmt(r.iv):(+r.iv).toFixed(1)}</span>`:'';
+    const nm=r.f.properties.name||r.f.properties.GEOID||'';
+    return `<div class="rItem" data-idx="${r.idx}" title="${nm}">
+      <span class="rNum">${i+1}</span><span class="rChip" style="background:${col}"></span>
+      <span class="rName">${nm}</span>
+      <span class="rRight"><span class="v">${r.ex}</span><span class="s"> sites</span>${ind}</span></div>`;
+  }).join('');
+  [...box.querySelectorAll('.rItem')].forEach(el=>el.onclick=()=>{
+    const f=fc.features[+el.dataset.idx];
+    try{map.fitBounds(L.geoJSON(f).getBounds(),{maxZoom:12,padding:[70,70]});}catch(e){}
+    showInfo(f);
+  });
+}
+
+/* ---------- legend ---------- */
+function drawBiv(){
+  const cv=document.getElementById('bivcanvas'),ctx=cv.getContext('2d'),W=cv.width,H=cv.height;
+  for(let y=0;y<H;y++)for(let x=0;x<W;x++){ctx.fillStyle=bivColor(x/(W-1),1-y/(H-1));ctx.fillRect(x,y,1,1);}
+}
+function updateLegend(){
+  const d=DIMS[dim];
+  document.getElementById('legTitle').textContent=d.ind?('Exposure × '+d.lbl):'Exposure';
+  document.getElementById('bivBox').style.display=d.ind?'grid':'none';
+  document.getElementById('seqBox').style.display=d.ind?'none':'block';
+  document.getElementById('axL').textContent=(d.lbl)+' →';
+  if(d.ind)drawBiv();
+  const fc=DATA[geo];
+  if(fc){let mx=0;fc.features.forEach(f=>mx=Math.max(mx,+f.properties[expField]||0));
+    document.getElementById('seqMax').textContent=mx+' sites';}
+}
+
+/* ---------- refresh + controls ---------- */
+function refresh(){renderChoro();updateLegend();renderRanks();}
+function updateDimOptions(){
+  const avail=DIM_AVAIL[geo]||DIM_AVAIL.cbg, sel=document.getElementById('dim');
+  [...sel.options].forEach(o=>{const ok=avail.includes(o.value);o.hidden=!ok;o.disabled=!ok;});
+  if(!avail.includes(dim)){dim='exposure';sel.value='exposure';}
+}
+document.querySelectorAll('#geoSeg button').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('#geoSeg button').forEach(x=>x.classList.remove('on'));
+  b.classList.add('on');geo=b.dataset.geo;updateDimOptions();refresh();
+});
+document.querySelectorAll('#extSeg button').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('#extSeg button').forEach(x=>x.classList.remove('on'));
+  b.classList.add('on');expField=b.dataset.ext;refresh();
+});
+document.getElementById('dim').onchange=e=>{dim=e.target.value;refresh();};
+function bindTog(id,layer,after){
+  const el=document.getElementById(id);
+  el.onchange=()=>{ if(!layer)return; if(el.checked){layer.addTo(map);if(after)after();}else map.removeLayer(layer);};
+}
+document.getElementById('t_choro').onchange=function(){
+  if(this.checked)renderChoro(); else if(choroLayer){map.removeLayer(choroLayer);choroLayer=null;}
+};
+bindTog('t_basins',lBasins);
+bindTog('t_rivers',lRivers);
+bindTog('t_sites',lSites,()=>lSites.bringToBack());
+bindTog('t_polys',lPolys);
+bindTog('t_points',lPoints,()=>lPoints.bringToFront());
+bindTog('t_qual',lQual,()=>lQual.bringToFront());
+
+/* ---------- init ---------- */
+updateDimOptions();
+refresh();
+</script>
+</body>
+</html>
