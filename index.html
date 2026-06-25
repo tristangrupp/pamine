@@ -7,7 +7,7 @@
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
 <style>
   :root{
-    --bg:#eef0f3; --panel:#ffffff; --line:rgba(15,20,30,.09);
+    --bg:#eef0f3; --panel:rgba(255,255,255,0.80); --line:rgba(15,20,30,.09);
     --txt:#1b1f25; --muted:#7c828c; --accent:#ef7a2f;
     --green:[63,174,107]; --red:#d6342c; --ohio:#e8961e;
   }
@@ -21,7 +21,8 @@
 
   /* shared panel look — flat, hairline, minimal */
   .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;
-    box-shadow:0 2px 14px rgba(20,30,50,.06)}
+    box-shadow:0 2px 14px rgba(20,30,50,.06);
+    backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px)}
   .lbl{font-size:9.5px;text-transform:uppercase;letter-spacing:1.3px;color:var(--muted);
     margin-bottom:6px;font-weight:600}
 
@@ -39,9 +40,9 @@
   .rsub{font-size:10px;color:var(--muted);text-align:right;max-width:160px}
   #ranks{flex:1;overflow-y:auto;padding-right:2px;display:flex;flex-direction:column;gap:3px}
   .rItem{display:grid;grid-template-columns:16px 9px 1fr auto;align-items:center;gap:8px;
-    padding:7px 9px;border-radius:9px;background:var(--panel);border:1px solid var(--line);
+    padding:7px 9px;border-radius:9px;background:rgba(255,255,255,.35);border:1px solid var(--line);
     cursor:pointer;transition:.12s}
-  .rItem:hover{background:#f5f6f8;transform:translateX(1px)}
+  .rItem:hover{background:rgba(245,246,248,.9);transform:translateX(1px)}
   .rNum{font-size:10.5px;color:var(--muted);font-variant-numeric:tabular-nums;text-align:right}
   .rChip{width:9px;height:9px;border-radius:2px}
   .rName{font-size:11.5px;font-weight:550;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -88,29 +89,44 @@
   .seqlbl{display:flex;justify-content:space-between;font-size:9px;color:var(--muted);margin-top:5px}
 
   #note{position:absolute;left:calc(50% + 140px);top:50%;transform:translate(-50%,-50%);z-index:1100;
-    background:#fff;border:1px solid var(--line);border-radius:10px;padding:13px 16px;font-size:12px;
+    background:rgba(255,255,255,.86);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+    border:1px solid var(--line);border-radius:10px;padding:13px 16px;font-size:12px;
     color:var(--muted);max-width:320px;text-align:center;display:none;line-height:1.5;box-shadow:0 2px 14px rgba(20,30,50,.08)}
   a.credit{position:absolute;bottom:3px;left:326px;z-index:900;font-size:9px;color:rgba(20,30,50,.3);text-decoration:none}
 
+  /* Pittsburgh marker */
+  .pgh-marker{display:flex;flex-direction:column;align-items:center;line-height:1}
+  .pgh-lbl{font-size:11px;font-weight:700;color:#15181d;letter-spacing:.3px;margin-bottom:3px;
+    white-space:nowrap;text-shadow:0 1px 2px rgba(255,255,255,.95),0 0 3px rgba(255,255,255,.95)}
+  .pgh-box{width:9px;height:9px;background:#15181d;border:1.5px solid #fff;box-shadow:0 0 0 1px rgba(0,0,0,.35)}
+
   /* ---------- mobile ---------- */
   @media (max-width:768px){
-    /* controls become a compact top bar */
-    #panel{top:8px;left:8px;right:8px;width:auto;padding:10px 12px;
-      display:flex;flex-direction:column;gap:8px}
+    /* controls = compact top bar */
+    #panel{top:8px;left:8px;right:8px;width:auto;padding:9px 11px;
+      display:flex;flex-direction:column;gap:7px}
     #panel .grp{margin:0}
     #panel .lbl{display:none}
-    .seg button{font-size:12px;padding:8px 0}
-    #panel .togs{flex-flow:row wrap;gap:6px 14px}
-    #panel .tog{font-size:12px;padding:2px}
-    /* rankings + readout become a collapsible bottom sheet */
-    #side{left:8px;right:8px;bottom:8px;top:auto;width:auto;max-height:44vh;gap:8px;z-index:1200}
+    /* smaller geography / extent segmented controls */
+    .seg{padding:2px}
+    .seg button{font-size:10.5px;padding:5px 0}
+    select{font-size:12px;padding:7px 10px}
+    /* Layers tucked under a tappable header; same list formatting when open */
+    #layersToggle{display:block !important;cursor:pointer;margin:0}
+    #layersToggle::after{content:" \25B8";color:var(--muted)}
+    #layersGrp.open #layersToggle::after{content:" \25BE"}
+    #layersGrp .togs{display:none}
+    #layersGrp.open .togs{display:flex;flex-direction:column;gap:2px;margin-top:7px}
+    #panel .tog{font-size:12px;padding:3px 2px}
+    /* readout + collapsible rankings as a bottom sheet */
+    #side{left:8px;right:8px;bottom:8px;top:auto;width:auto;max-height:50vh;gap:8px;z-index:1200}
     #side .brand{display:none}
     #side .card{padding:11px 13px}
-    .ranksHead{cursor:pointer}
-    .ranksHead .ttl::after{content:" \25BE";color:var(--muted);font-size:10px}
-    #side.collapsed .ttl::after{content:" \25B4"}
-    #side.collapsed #ranks{display:none}
-    #ranks{max-height:26vh}
+    .ranksHead{display:flex;cursor:pointer}
+    .ranksHead .ttl::after{content:" \25B4";font-size:10px;color:var(--muted)}
+    #side.ranksopen .ranksHead .ttl::after{content:" \25BE"}
+    #side:not(.ranksopen) #ranks{display:none}
+    #ranks{max-height:30vh}
     #legend{display:none}
     .credit{display:none}
     #note{left:50% !important;max-width:82vw}
@@ -162,8 +178,8 @@
       <option value="health">Exposure × Health burden</option>
     </select>
   </div>
-  <div class="grp">
-    <div class="lbl">Layers</div>
+  <div class="grp" id="layersGrp">
+    <div class="lbl" id="layersToggle">Layers</div>
     <div class="togs">
       <label class="tog"><input type="checkbox" id="t_choro" checked><span>Census exposure</span></label>
       <label class="tog"><input type="checkbox" id="t_basins" checked><span class="sw" style="background:var(--ohio)"></span><span>River basins</span></label>
@@ -299,6 +315,11 @@ if(typeof AMLPOINTS!=='undefined'){
   lQual=L.geoJSON(q,{pane:'qual',interactive:false,pointToLayer:(f,ll)=>L.circleMarker(ll,{
     radius:1.4,color:'#9aa0a8',weight:0,fillColor:'#9aa0a8',fillOpacity:0.8})}).addTo(map);
 }
+
+/* ---------- Pittsburgh label ---------- */
+L.marker([40.4406,-79.9959],{interactive:false,keyboard:false,
+  icon:L.divIcon({className:'pgh-marker',iconSize:[90,30],iconAnchor:[45,26],
+    html:'<div class="pgh-lbl">Pittsburgh</div><div class="pgh-box"></div>'})}).addTo(map);
 
 /* ---------- choropleth ---------- */
 const DIMS={
@@ -467,9 +488,11 @@ bindTog('t_polys',lPolys);
 bindTog('t_points',lPoints,()=>lPoints.bringToFront());
 bindTog('t_qual',lQual,()=>lQual.bringToFront());
 
-/* ---------- mobile: tap rankings header to collapse the bottom sheet ---------- */
+/* ---------- mobile: collapsible rankings + layers menu ---------- */
 const rhead=document.querySelector('.ranksHead');
-if(rhead)rhead.addEventListener('click',()=>document.getElementById('side').classList.toggle('collapsed'));
+if(rhead)rhead.addEventListener('click',()=>document.getElementById('side').classList.toggle('ranksopen'));
+const ltog=document.getElementById('layersToggle');
+if(ltog)ltog.addEventListener('click',()=>document.getElementById('layersGrp').classList.toggle('open'));
 
 /* ---------- init ---------- */
 updateDimOptions();
